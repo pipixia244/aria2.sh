@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-#=============================================================
+#
+# Copyright (c) 2017 Toyo
+# Copyright (c) 2018-2020 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
 # https://github.com/P3TERX/aria2.sh
 # Description: Aria2 One-click installation management script
 # System Required: CentOS/Debian/Ubuntu
-# Version: 2.5.4
-# Author: Toyo
-# Maintainer: P3TERX
-# Blog: https://p3terx.com
-#=============================================================
+# Version: 2.7.4
+#
 
-sh_ver="2.5.4"
-PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
-export PATH
+sh_ver="2.7.4"
+export PATH=~/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/sbin:/bin
 aria2_conf_dir="/root/.aria2c"
 download_path="/root/downloads"
 aria2_conf="${aria2_conf_dir}/aria2.conf"
@@ -73,42 +75,27 @@ check_pid() {
     PID=$(ps -ef | grep "aria2c" | grep -v grep | grep -v "aria2.sh" | grep -v "init.d" | grep -v "service" | awk '{print $2}')
 }
 check_new_ver() {
-    echo -e "${Info} 请输入 Aria2 版本号，格式如：[ 1.35.0 ]，获取地址：[ https://github.com/P3TERX/aria2-builder/releases ]"
-    read -e -p "默认回车自动获取最新版本号:" aria2_new_ver
+    aria2_new_ver=$(
+        {
+            wget -t2 -T3 -qO- "https://api.github.com/repos/P3TERX/Aria2-Pro-Core/releases/latest" ||
+                wget -t2 -T3 -qO- "https://gh-api.p3terx.com/repos/P3TERX/Aria2-Pro-Core/releases/latest"
+        } | grep -o '"tag_name": ".*"' | head -n 1 | cut -d'"' -f4
+    )
     if [[ -z ${aria2_new_ver} ]]; then
-        aria2_new_ver=$(
-            {
-                wget -t2 -T3 -qO- "https://api.github.com/repos/P3TERX/aria2-builder/releases/latest" ||
-                    wget -t2 -T3 -qO- "https://gh-api.p3terx.com/repos/P3TERX/aria2-builder/releases/latest"
-            } | grep -o '"tag_name": ".*"' | head -n 1 | cut -d'"' -f4
-        )
-        if [[ -z ${aria2_new_ver} ]]; then
-            echo -e "${Error} Aria2 最新版本获取失败，请手动获取最新版本号[ https://github.com/P3TERX/aria2-builder/releases ]"
-            read -e -p "请输入版本号 [ 格式如 1.35.0 ] :" aria2_new_ver
-            [[ -z "${aria2_new_ver}" ]] && echo "取消..." && exit 1
-        else
-            echo -e "${Info} 检测到 Aria2 最新版本为 [ ${aria2_new_ver} ]"
-        fi
-    else
-        echo -e "${Info} 即将准备下载 Aria2 版本为 [ ${aria2_new_ver} ]"
+        echo -e "${Error} Aria2 最新版本获取失败，请手动获取最新版本号[ https://github.com/P3TERX/Aria2-Pro-Core/releases ]"
+        read -e -p "请输入版本号:" aria2_new_ver
+        [[ -z "${aria2_new_ver}" ]] && echo "取消..." && exit 1
     fi
 }
 check_ver_comparison() {
-    aria2_now_ver=$(${aria2c} -v | head -n 1 | awk '{print $3}')
-    [[ -z ${aria2_now_ver} ]] && echo -e "${Error} Aria2 当前版本获取失败 !" && exit 1
-    if [[ "${aria2_now_ver}" != "${aria2_new_ver}" ]]; then
-        echo -e "${Info} 发现 Aria2 已有新版本 [ ${aria2_new_ver} ](当前版本：${aria2_now_ver})"
-        read -e -p "是否更新(会中断当前下载任务，请注意) ? [Y/n] :" yn
-        [[ -z "${yn}" ]] && yn="y"
-        if [[ $yn == [Yy] ]]; then
-            check_pid
-            [[ ! -z $PID ]] && kill -9 ${PID}
-            check_sys
-            Download_aria2 "update"
-            Start_aria2
-        fi
-    else
-        echo -e "${Info} 当前 Aria2 已是最新版本 [ ${aria2_new_ver} ]" && exit 1
+    read -e -p "是否更新(会中断当前下载任务) ? [Y/n] :" yn
+    [[ -z "${yn}" ]] && yn="y"
+    if [[ $yn == [Yy] ]]; then
+        check_pid
+        [[ ! -z $PID ]] && kill -9 ${PID}
+        check_sys
+        Download_aria2 "update"
+        Start_aria2
     fi
 }
 Download_aria2() {
@@ -125,14 +112,18 @@ Download_aria2() {
         echo -e "${Error} 不支持此 CPU 架构。"
         exit 1
     fi
-    DOWNLOAD_URL="https://github.com/P3TERX/aria2-builder/releases/download/${aria2_new_ver}/aria2-${aria2_new_ver%_*}-static-linux-${ARCH}.tar.gz"
+    while [[ $(which aria2c) ]]; do
+        echo -e "${Info} 删除旧版 Aria2 二进制文件..."
+        rm -vf $(which aria2c)
+    done
+    DOWNLOAD_URL="https://github.com/P3TERX/Aria2-Pro-Core/releases/download/${aria2_new_ver}/aria2-${aria2_new_ver%_*}-static-linux-${ARCH}.tar.gz"
     {
         wget -t2 -T3 -O- "${DOWNLOAD_URL}" ||
             wget -t2 -T3 -O- "https://gh-acc.p3terx.com/${DOWNLOAD_URL}"
     } | tar -zx
     [[ ! -s "aria2c" ]] && echo -e "${Error} Aria2 下载失败 !" && exit 1
     [[ ${update_dl} = "update" ]] && rm -f "${aria2c}"
-    mv aria2c /usr/local/bin
+    mv -f aria2c "${aria2c}"
     [[ ! -e ${aria2c} ]] && echo -e "${Error} Aria2 主程序安装失败！" && exit 1
     chmod +x ${aria2c}
     echo -e "${Info} Aria2 主程序安装完成！"
@@ -140,10 +131,13 @@ Download_aria2() {
 Download_aria2_conf() {
     PROFILE_URL1="https://p3terx.github.io/aria2.conf"
     PROFILE_URL2="https://aria2c.now.sh"
-    PROFILE_URL3="https://gh.p3terx.workers.dev/aria2.conf/master"
+    PROFILE_URL3="https://cdn.jsdelivr.net/gh/P3TERX/aria2.conf@master"
     PROFILE_LIST="
 aria2.conf
 clean.sh
+core
+script.conf
+rclone.env
 upload.sh
 delete.sh
 dht.dat
@@ -163,9 +157,8 @@ LICENSE
             exit 1
         }
     done
-    sed -i "s@^\(DOWNLOAD_PATH='\).*@\1${download_path}'@" ${aria2_conf_dir}/*.sh
     sed -i "s@^\(dir=\).*@\1${download_path}@" ${aria2_conf}
-    sed -i "s@/root/.aria2/@${aria2_conf_dir}/@" ${aria2_conf_dir}/{*.sh,aria2.conf}
+    sed -i "s@/root/.aria2/@${aria2_conf_dir}/@" ${aria2_conf_dir}/*.conf
     sed -i "s@^\(rpc-secret=\).*@\1$(date +%s%N | md5sum | head -c 20)@" ${aria2_conf}
     sed -i "s@^#\(retry-on-.*=\).*@\1true@" ${aria2_conf}
     sed -i "s@^\(max-connection-per-server=\).*@\132@" ${aria2_conf}
@@ -176,8 +169,8 @@ LICENSE
 Service_aria2() {
     if [[ ${release} = "centos" ]]; then
         wget -N -t2 -T3 "https://raw.githubusercontent.com/P3TERX/aria2.sh/master/service/aria2_centos" -O /etc/init.d/aria2 ||
-            wget -N -t2 -T3 "https://cdn.jsdelivr.net/gh/P3TERX/aria2.sh/service/aria2_centos" -O /etc/init.d/aria2 ||
-            wget -N -t2 -T3 "https://gh.p3terx.workers.dev/aria2.sh/master/service/aria2_centos" -O /etc/init.d/aria2
+            wget -N -t2 -T3 "https://cdn.jsdelivr.net/gh/P3TERX/aria2.sh@master/service/aria2_centos" -O /etc/init.d/aria2 ||
+            wget -N -t2 -T3 "https://gh-raw.p3terx.com/P3TERX/aria2.sh/master/service/aria2_centos" -O /etc/init.d/aria2
         [[ ! -s /etc/init.d/aria2 ]] && {
             echo -e "${Error} Aria2服务 管理脚本下载失败 !"
             exit 1
@@ -187,8 +180,8 @@ Service_aria2() {
         chkconfig aria2 on
     else
         wget -N -t2 -T3 "https://raw.githubusercontent.com/P3TERX/aria2.sh/master/service/aria2_debian" -O /etc/init.d/aria2 ||
-            wget -N -t2 -T3 "https://cdn.jsdelivr.net/gh/P3TERX/aria2.sh/service/aria2_debian" -O /etc/init.d/aria2 ||
-            wget -N -t2 -T3 "https://gh.p3terx.workers.dev/aria2.sh/master/service/aria2_debian" -O /etc/init.d/aria2
+            wget -N -t2 -T3 "https://cdn.jsdelivr.net/gh/P3TERX/aria2.sh@master/service/aria2_debian" -O /etc/init.d/aria2 ||
+            wget -N -t2 -T3 "https://gh-raw.p3terx.com/P3TERX/aria2.sh/master/service/aria2_debian" -O /etc/init.d/aria2
         [[ ! -s /etc/init.d/aria2 ]] && {
             echo -e "${Error} Aria2服务 管理脚本下载失败 !"
             exit 1
@@ -201,10 +194,10 @@ Service_aria2() {
 Installation_dependency() {
     if [[ ${release} = "centos" ]]; then
         yum update
-        yum install nano ca-certificates findutils jq tar gzip dpkg -y
+        yum install -y wget curl nano ca-certificates findutils jq tar gzip dpkg
     else
         apt-get update
-        apt-get install nano ca-certificates findutils jq tar gzip dpkg -y
+        apt-get install -y wget curl nano ca-certificates findutils jq tar gzip dpkg
     fi
     if [[ ! -s /etc/ssl/certs/ca-certificates.crt ]]; then
         wget -qO- git.io/ca-certificates.sh | bash
@@ -499,27 +492,34 @@ View_Aria2() {
     check_installed_status
     Read_config
     IPV4=$(
-        wget -qO- -t1 -T2 -4 ip.sb ||
-            wget -qO- -t1 -T2 -4 ifconfig.io ||
+        wget -qO- -t1 -T2 -4 api.ip.sb/ip ||
+            wget -qO- -t1 -T2 -4 ifconfig.io/ip ||
             wget -qO- -t1 -T2 -4 www.trackip.net/ip
     )
-    [[ -z "${IPV4}" ]] && IPV4="IPv4 地址检测失败"
     IPV6=$(
-        wget -qO- -t1 -T2 -6 ip.sb ||
-            wget -qO- -t1 -T2 -6 ifconfig.io ||
+        wget -qO- -t1 -T2 -6 api.ip.sb/ip ||
+            wget -qO- -t1 -T2 -6 ifconfig.io/ip ||
             wget -qO- -t1 -T2 -6 www.trackip.net/ip
     )
+    [[ -z "${IPV4}" ]] && IPV4="IPv4 地址检测失败"
     [[ -z "${IPV6}" ]] && IPV6="IPv6 地址检测失败"
     [[ -z "${aria2_dir}" ]] && aria2_dir="找不到配置参数"
     [[ -z "${aria2_port}" ]] && aria2_port="找不到配置参数"
     [[ -z "${aria2_passwd}" ]] && aria2_passwd="找不到配置参数(或无密钥)"
+    if [[ -z "${IPV4}" || -z "${aria2_port}" ]]; then
+        AriaNg_URL="null"
+    else
+        AriaNg_API="/#!/settings/rpc/set/ws/${IPV4}/${aria2_port}/jsonrpc/$(echo -n ${aria2_passwd} | base64)"
+        AriaNg_URL="http://ariang.js.org${AriaNg_API}"
+    fi
     clear
     echo -e "\nAria2 简单配置信息：\n
  IPv4 地址\t: ${Green_font_prefix}${IPV4}${Font_color_suffix}
  IPv6 地址\t: ${Green_font_prefix}${IPV6}${Font_color_suffix}
  RPC 端口\t: ${Green_font_prefix}${aria2_port}${Font_color_suffix}
  RPC 密钥\t: ${Green_font_prefix}${aria2_passwd}${Font_color_suffix}
- 下载目录\t: ${Green_font_prefix}${aria2_dir}${Font_color_suffix}\n"
+ 下载目录\t: ${Green_font_prefix}${aria2_dir}${Font_color_suffix}
+ AriaNg 链接\t: ${Green_font_prefix}${AriaNg_URL}${Font_color_suffix}\n"
 }
 View_Log() {
     [[ ! -e ${aria2_log} ]] && echo -e "${Error} Aria2 日志文件不存在 !" && exit 1
